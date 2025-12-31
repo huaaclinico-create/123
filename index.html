@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>酷炫直排輪冒險大轉盤</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            padding: 20px;
+            margin: 0;
+        }
+
+        #wheel-outer {
+            position: relative;
+            width: 100%;
+            max-width: 480px; /* 增加一點寬度限制 */
+            margin: 0 auto;
+        }
+
+        #wheel-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1; /* 強制保持正方形比例 */
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 10px solid #fff;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            background: #fff;
+            transition: transform 4s cubic-bezier(0.1, 0, 0.2, 1);
+            transform: rotate(0deg);
+        }
+
+        /* 轉盤中心裝飾 */
+        #wheel-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70px;
+            height: 70px;
+            background: white;
+            border-radius: 50%;
+            z-index: 5;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            border: 5px solid #764ba2;
+        }
+
+        #pointer {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            z-index: 20;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
+        }
+
+        .spin-button {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 16px 60px;
+            font-size: 28px;
+            font-weight: 900;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #b33939;
+            transition: all 0.1s;
+            margin-top: 40px;
+            z-index: 30;
+            letter-spacing: 2px;
+        }
+
+        .spin-button:hover { background: #ff6b81; }
+        .spin-button:active {
+            transform: translateY(4px);
+            box-shadow: 0 4px 0 #b33939;
+        }
+
+        #result-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 40px;
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="text-white text-center mb-10">
+        <h1 class="text-4xl md:text-5xl font-black mb-3 drop-shadow-lg tracking-wider">🛼 直排輪大冒險 🛼</h1>
+        <p class="text-xl font-bold opacity-90">旋轉你的幸運輪盤！</p>
+    </div>
+
+    <div id="wheel-outer">
+        <!-- 指針 -->
+        <div id="pointer">
+            <svg viewBox="0 0 100 120">
+                <path d="M50 120 L10 20 Q50 0 90 20 Z" fill="#FFD700" stroke="#000" stroke-width="3"/>
+                <circle cx="50" cy="40" r="15" fill="#FFF" opacity="0.6"/>
+            </svg>
+        </div>
+        
+        <div id="wheel-container">
+            <canvas id="wheel"></canvas>
+            <div id="wheel-center">🛼</div>
+        </div>
+    </div>
+
+    <button id="spin-btn" class="spin-button">GO! 開始抽獎</button>
+
+    <div id="result-modal">
+        <div class="modal-content">
+            <div class="text-6xl mb-6">🏆</div>
+            <h2 class="text-2xl font-bold text-gray-400">恭喜獲得獎項</h2>
+            <div id="prize-name" class="text-4xl font-black text-indigo-700 my-6"></div>
+            <p id="prize-desc" class="text-gray-600 mb-10 px-4 text-xl"></p>
+            <button onclick="closeModal()" class="w-full bg-indigo-600 text-white py-4 rounded-3xl font-bold text-2xl shadow-xl hover:bg-indigo-700 transition active:scale-95">超開心！</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('wheel');
+        const ctx = canvas.getContext('2d');
+        const spinBtn = document.getElementById('spin-btn');
+        const modal = document.getElementById('result-modal');
+        const prizeNameDisplay = document.getElementById('prize-name');
+        const prizeDescDisplay = document.getElementById('prize-desc');
+
+        const prizes = [
+            { name: "閃光輪一對", desc: "讓你的鞋子在晚上發光！", color: "#FF5252" },
+            { name: "運動長襪", desc: "穿上它保護腳踝，減少摩擦。", color: "#448AFF" },
+            { name: "炫彩貼紙包", desc: "裝飾你的頭盔與護具吧！", color: "#FF4081" },
+            { name: "特技挑戰", desc: "學會「單腳滑行」3秒鐘！", color: "#7C4DFF" },
+            { name: "培林保養", desc: "讓輪子轉得比風還要快！", color: "#18FFFF" },
+            { name: "運動飲料", desc: "補充能量，繼續前進！", color: "#64FFDA" },
+            { name: "彩輪螺絲", desc: "幫鞋子換個亮眼的小細節。", color: "#69F0AE" },
+            { name: "教練秘技", desc: "教練教你一個帥氣動作！", color: "#B2FF59" },
+            { name: "直排輪背袋", desc: "方便背著心愛的鞋子出門。", color: "#EEFF41" },
+            { name: "護具收納袋", desc: "收納你的所有防護裝備。", color: "#FFFF00" },
+            { name: "降溫噴霧", desc: "滑累了，幫身體降降溫！", color: "#FFD740" },
+            { name: "企鵝走路", desc: "趣味挑戰：學企鵝穿鞋走路！", color: "#FFAB40" },
+            { name: "夜光手環", desc: "滑行時最閃耀的小裝飾。", color: "#FF6E40" },
+            { name: "輪子清洗", desc: "把路上的灰塵通通洗乾淨。", color: "#FFCCBC" },
+            { name: "超級加油", desc: "獲得全場最熱烈的掌聲！", color: "#D1C4E9" },
+            { name: "迷你小掛飾", desc: "掛在書包上的迷你直排輪。", color: "#C5CAE9" },
+            { name: "吸汗運動巾", desc: "擦乾汗水，繼續挑戰！", color: "#B3E5FC" },
+            { name: "帥氣紋身貼", desc: "展現你的滑行勇氣！", color: "#B2DFDB" },
+            { name: "勇氣勳章", desc: "跌倒也不哭的勇者證明！", color: "#DCEDC8" },
+            { name: "再轉一次", desc: "手氣太旺了，再抽一次！", color: "#F0F4C3" }
+        ];
+
+        let currentRotation = 0;
+        let isSpinning = false;
+
+        function init() {
+            // 提高 Canvas 內部解析度，解決模糊問題
+            canvas.width = 1200;
+            canvas.height = 1200;
+            drawWheel();
+        }
+
+        function drawWheel() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = canvas.width / 2;
+            const arc = Math.PI * 2 / prizes.length;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            prizes.forEach((prize, i) => {
+                const angle = i * arc;
+                
+                // 畫扇形
+                ctx.beginPath();
+                ctx.fillStyle = prize.color;
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, angle, angle + arc);
+                ctx.fill();
+                
+                // 畫扇形邊框
+                ctx.strokeStyle = "rgba(255,255,255,0.8)";
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                // 畫文字
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(angle + arc / 2);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#333";
+                // 調整文字大小與距離
+                ctx.font = "bold 38px Noto Sans TC"; 
+                ctx.fillText(prize.name, radius - 80, 15);
+                ctx.restore();
+            });
+        }
+
+        function spin() {
+            if (isSpinning) return;
+            
+            isSpinning = true;
+            spinBtn.disabled = true;
+            
+            // 隨機旋轉 6~12 圈加上隨機角度
+            const extraDegrees = 2160 + Math.floor(Math.random() * 2160);
+            currentRotation += extraDegrees;
+            
+            canvas.style.transform = `rotate(${currentRotation}deg)`;
+
+            setTimeout(() => {
+                const actualDeg = currentRotation % 360;
+                // 指針在上方（270度方向），根據旋轉度數計算獎項索引
+                const prizeIndex = Math.floor(((360 - actualDeg + 270) % 360) / (360 / prizes.length));
+                showResult(prizes[prizeIndex]);
+                isSpinning = false;
+                spinBtn.disabled = false;
+            }, 4100);
+        }
+
+        function showResult(prize) {
+            prizeNameDisplay.innerText = prize.name;
+            prizeDescDisplay.innerText = prize.desc;
+            modal.style.display = 'flex';
+            
+            // 施放煙火碎紙
+            const end = Date.now() + (2 * 1000);
+            const colors = ['#FFD700', '#FF4757', '#764ba2', '#18FFFF'];
+
+            (function frame() {
+                confetti({
+                    particleCount: 5,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0 },
+                    colors: colors
+                });
+                confetti({
+                    particleCount: 5,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1 },
+                    colors: colors
+                });
+
+                if (Date.now() < end) {
+                    requestAnimationFrame(frame);
+                }
+            }());
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+        }
+
+        spinBtn.addEventListener('click', spin);
+        window.addEventListener('load', init);
+        // 如果視窗大小改變，重新初始化（可選）
+        window.addEventListener('resize', init);
+    </script>
+</body>
+</html>
